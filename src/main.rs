@@ -219,7 +219,7 @@ fn main() {
     for path in incorrect_file {
         println!("{} {}", path.to_string_lossy(), "wrong".bright_red());
     }
-    println!("Unreadable lines: {unreadable:?}");
+    println!("Unreadable lines: {:?}", unreadable.into_par_iter().map(|x| x + 1).collect::<Vec<usize>>());
     if args.time {
         let time = Instant::now() - before;
         println!("{:?}", time)
