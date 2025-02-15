@@ -113,8 +113,6 @@ fn file_checker(block_size: usize, hash: &str, filepath: &Path) -> Result<bool, 
         Err(_) => return Ok(false),
     });
 
-    let args = ARGS_CELL.get().unwrap();
-
     let mut hasher = Md5::new();
     let mut buffer = vec![0; block_size];
 
@@ -188,9 +186,9 @@ fn main() {
         incorrect_file = hash_list
             .into_par_iter()
             .fold(
-                || vec![],
+                Vec::new,
                 |mut acc, (hash, path)| {
-                    let res = checker_wrapper(hash, path, &args);
+                    let res = checker_wrapper(hash, path, args);
                     if let Some(x) = res {
                         acc.push(x);
                     }
@@ -198,7 +196,7 @@ fn main() {
                 },
             )
             .reduce(
-                || vec![],
+                Vec::new,
                 |mut a, mut b| {
                     a.append(&mut b);
                     a
@@ -206,7 +204,7 @@ fn main() {
             );
     } else {
         hash_list.into_iter().for_each(|(hash, path)| {
-            let res = checker_wrapper(hash, path, &args);
+            let res = checker_wrapper(hash, path, args);
             if let Some(x) = res {
                 incorrect_file.push(x);
             }
