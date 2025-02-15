@@ -1,3 +1,0 @@
-[env]
-OPENSSL_DIR = "D:/vcpkg/packages/openssl_x64-windows-static"
-OPENSSL_STATIC = "yes"

@@ -1,50 +1,65 @@
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::HashMap,
     fs::File,
-    io::{self, BufRead, BufReader, Read},
-    sync::{mpsc, Arc, Mutex},
-    thread,
-    time::Instant,
+    io::{BufRead, BufReader},
 };
+use std::env::set_current_dir;
+use std::io::Error;
+use std::io::Read;
+use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
+use std::time::Instant;
 
 use clap::Parser;
 use colored::Colorize;
 use md5::{Digest, Md5};
 use rayon::prelude::*;
-
-// TODO: Add arguments (block_size)
-const BLOCK_SIZE: usize = 50 * 1024 * 1024;
+use regex::Regex;
 
 trait Hex {
     fn to_hex(&self) -> String;
 }
 
-#[derive(Debug, Parser)]
+trait ConsistentMD5 {
+    fn con_update(&mut self, bytes: &[u8]);
+    fn con_finalize(&mut self) -> Vec<u8>;
+}
+
+impl ConsistentMD5 for Md5 {
+    fn con_update(&mut self, bytes: &[u8]) {
+        self.update(bytes);
+    }
+
+    fn con_finalize(&mut self) -> Vec<u8> {
+        self.finalize_reset().to_vec()
+    }
+}
+
+#[derive(Debug, Parser, Clone)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    #[arg(short, long)]
-    rayon: bool,
+    #[arg(short, long, help = "Use multithreading to speed up hashing")]
+    multithreading: bool,
 
-    #[arg(short, long)]
+    #[arg(short, long, default_value_t = false, help = "Enable a timer")]
+    time: bool,
+
+    #[arg(short, long, default_value_t = 1024, help = "Block size in KiB")]
+    block_size: usize,
+
+    #[arg(
+        short,
+        long,
+        default_value_t = false,
+        help = "Sort file by decreasing size"
+    )]
+    sort: bool,
+
+    #[arg(short, long, help = "Set current working directory")]
+    cwd: Option<String>,
+
+    #[arg(help = "File contains hash list")]
     filename: String,
-
-    #[arg(short, long, default_value_t = 4)]
-    thread_num: usize,
-
-    #[arg(short, long, default_value_t = false)]
-    benchmark: bool,
-}
-
-#[derive(Debug)]
-enum Error {
-    IOError(io::Error),
-    BufReadWrong,
-}
-
-impl From<io::Error> for Error {
-    fn from(x: io::Error) -> Self {
-        Self::IOError(x)
-    }
 }
 
 impl Hex for Vec<u8> {
@@ -57,148 +72,158 @@ impl Hex for Vec<u8> {
     }
 }
 
-fn md5_file(filename: &str) -> Result<Vec<u8>, Error> {
-    let mut file = File::open(filename)?;
-    let file_size: usize = file.metadata()?.len() as usize;
-    let mut hasher = Md5::new();
+static ARGS_CELL: OnceLock<Args> = OnceLock::new();
 
-    if file_size <= BLOCK_SIZE {
-        let mut buf: Vec<u8> = vec![0; file_size];
-        let n = file.read(&mut buf)?;
-        if n != file_size {
-            return Err(Error::BufReadWrong);
-        }
-        hasher.update(&buf);
-    } else {
-        let mut buf: Vec<u8> = vec![0; BLOCK_SIZE];
-        loop {
-            let n = file.read(&mut buf)?;
-            if n >= BLOCK_SIZE {
-                hasher.update(&buf);
-            } else {
-                buf.resize(n, 0);
-                hasher.update(&buf);
-                break;
-            }
-        }
-    }
-    Ok(hasher.finalize().to_vec())
-}
-
-fn md5_file_parser(filename: &str) -> Result<(HashMap<String, String>, Vec<usize>), Error> {
-    let file = File::open(filename)?;
-    let reader = BufReader::new(file);
-    let mut dict: HashMap<String, String> = HashMap::new();
+fn md5_hash_list_parser(filename: &str) -> Result<(HashMap<String, PathBuf>, Vec<usize>), Error> {
+    let file = BufReader::new(File::open(filename)?);
     let mut unreadable = vec![];
+    let mut hash_list = HashMap::new();
+    let re = Regex::new(r"^[0-9a-z]{32}").unwrap();
 
-    for (i, line) in reader.lines().enumerate() {
-        if let Ok(line) = line {
-            if line.starts_with(';') || line.is_empty() {
-                continue;
-            }
-            let temp: Vec<&str> = line.split(" *").collect();
-            dict.insert(temp[1].to_string(), temp[0].to_string());
+    for (i, line) in file.lines().enumerate() {
+        let line = if let Ok(line) = line {
+            line
         } else {
             unreadable.push(i);
-        }
-    }
-    Ok((dict, unreadable))
-}
+            continue;
+        };
 
-fn md5_checker(md5_list: HashMap<String, String>, thread_num: usize) {
-    let mut temp_list: Vec<String> = md5_list.clone().into_keys().collect();
-    temp_list.sort_unstable();
-
-    let queue = VecDeque::from(temp_list);
-    let mutex_queue = Arc::new(Mutex::new(queue));
-    let mut handle_list = vec![];
-
-    let (tx, rx) = mpsc::channel();
-
-    for _ in 0..thread_num {
-        let tx1 = tx.clone();
-        let clone_queue = mutex_queue.clone();
-        let handle = thread::spawn(move || loop {
-            let filename: String;
-            {
-                let mut queue = clone_queue.lock().unwrap();
-                if queue.is_empty() {
-                    return;
-                }
-                filename = queue.pop_front().unwrap();
+        let res = line.split_once(" *");
+        if let Some((hash, filepath)) = res {
+            if !re.is_match(hash) {
+                unreadable.push(i);
+                continue;
             }
-            let hash = md5_file(&filename).unwrap_or(vec![]);
-            tx1.send((filename, hash.to_hex())).unwrap();
-        });
-        handle_list.push(handle);
-    }
-    drop(tx);
 
-    let mut correct_count = 0;
-    let mut wrong_list = vec![];
-    for mess in rx {
-        if md5_list.get(&mess.0).unwrap() == &mess.1 {
-            correct_count += 1;
-            println!("{} {}", mess.0, "correct".bright_green());
+            let path = PathBuf::from(filepath);
+
+            hash_list.entry(hash.to_string()).or_insert(path);
         } else {
-            wrong_list.push(mess.0.clone());
-            println!("{} {}", mess.0, "wrong".bright_red());
+            unreadable.push(i);
+            continue;
         }
     }
 
-    let total_count = correct_count + wrong_list.len();
-    println!("Correct: {correct_count}/{total_count}");
-    println!("Wrong: {}/{total_count}", wrong_list.len());
-    for filename in wrong_list {
-        println!("{} {}", filename, "wrong".bright_red());
-    }
+    Ok((hash_list, unreadable))
 }
 
-fn md5_checker_rayon(md5_list: HashMap<String, String>) {
-    let wrong_list = Mutex::new(vec![]);
-    md5_list.par_iter().for_each(|(filename, hash)| {
-        let check_hash = md5_file(filename).unwrap_or(vec![]).to_hex();
-        if check_hash == *hash {
-            println!("{} {}", filename, "correct".bright_green());
-        } else {
-            let mut list = wrong_list.lock().unwrap();
-            list.push(filename.clone());
-            println!("{} {}", filename, "wrong".bright_red());
-        }
+fn file_checker(block_size: usize, hash: &str, filepath: &Path) -> Result<bool, Error> {
+    let mut file = BufReader::new(match File::open(filepath) {
+        Ok(f) => f,
+        Err(_) => return Ok(false),
     });
-    let wrong_list = wrong_list.lock().unwrap();
-    let total_count = md5_list.len();
-    let correct_count = total_count - wrong_list.len();
-    println!("Correct: {correct_count}/{total_count}");
-    println!("Wrong: {}/{total_count}", wrong_list.len());
-    for filename in wrong_list.iter() {
-        println!("{} {}", filename, "wrong".bright_red());
+
+    let args = ARGS_CELL.get().unwrap();
+
+    let mut hasher = Md5::new();
+    let mut buffer = vec![0; block_size];
+
+    loop {
+        let bytes_read = file.read(&mut buffer)?;
+        if bytes_read == 0 {
+            break;
+        }
+        hasher.con_update(&buffer[..bytes_read]);
     }
+    let result = hasher.con_finalize().to_hex();
+
+    Ok(result == hash)
 }
 
 fn main() {
+    let before = Instant::now();
     let args = Args::parse();
     // let args = Args {
-    //     rayon: true,
-    //     filename: String::from("fitgirl.md5"),
-    //     thread_num: 4,
-    //     benchmark: false,
+    //     multithreading: true,
+    //     time: true,
+    //     block_size: 1024,
+    //     sort: false,
+    //     cwd: Some("F:/Games/No Man's Sky/_Redist".to_string()),
+    //     filename: "fitgirl.md5".to_string(),
     // };
-    let (list, unreadable_list) = md5_file_parser(&args.filename).unwrap();
 
-    let before = Instant::now();
-    if !args.rayon {
-        md5_checker(list, args.thread_num);
+    ARGS_CELL.set(args).unwrap();
+    let args = ARGS_CELL.get().unwrap();
+
+    if let Some(path) = args.cwd.as_ref() {
+        set_current_dir(path).unwrap();
+    }
+
+    let (hash_list, unreadable) = md5_hash_list_parser(&args.filename).unwrap();
+
+    let hash_list_len = hash_list.len();
+
+    let hash_list: Vec<(String, PathBuf)> = if !args.sort {
+        hash_list.into_iter().collect()
     } else {
-        md5_checker_rayon(list);
-    }
-    for n in unreadable_list {
-        println!("Cannot read line at {}", n + 1);
-    }
-    if args.benchmark {
-        println!("Elapsed time: {:.2?}", before.elapsed());
+        let mut temp: Vec<(String, PathBuf, u64)> = hash_list
+            .into_iter()
+            .map(|(hash, path)| {
+                let file = File::open(&path).unwrap();
+                let size = file.metadata().unwrap().len();
+
+                (hash, path, size)
+            })
+            .collect();
+
+        temp.sort_unstable_by_key(|x| x.2);
+        temp.into_iter().rev().map(|(a, b, _)| (a, b)).collect()
+    };
+
+    fn checker_wrapper(hash: String, path: PathBuf, args: &Args) -> Option<PathBuf> {
+        let mut incorrect_file = None;
+        let status_string = if file_checker(args.block_size * 1024, &hash, &path).unwrap() {
+            "correct".bright_green()
+        } else {
+            incorrect_file = Some(path.clone());
+            "wrong".bright_red()
+        };
+
+        println!("{} {}", path.to_string_lossy(), status_string);
+        incorrect_file
     }
 
-    // let list = md5_file_parser("fitgirl.md5").unwrap();
-    // println!("{:?}", list);
+    let mut incorrect_file = vec![];
+    if args.multithreading {
+        incorrect_file = hash_list
+            .into_par_iter()
+            .fold(
+                || vec![],
+                |mut acc, (hash, path)| {
+                    let res = checker_wrapper(hash, path, &args);
+                    if let Some(x) = res {
+                        acc.push(x);
+                    }
+                    acc
+                },
+            )
+            .reduce(
+                || vec![],
+                |mut a, mut b| {
+                    a.append(&mut b);
+                    a
+                },
+            );
+    } else {
+        hash_list.into_iter().for_each(|(hash, path)| {
+            let res = checker_wrapper(hash, path, &args);
+            if let Some(x) = res {
+                incorrect_file.push(x);
+            }
+        });
+    }
+
+    let incorrect_len = incorrect_file.len();
+    let correct_len = hash_list_len - incorrect_len;
+
+    println!("Correct: {correct_len}/{hash_list_len}");
+    println!("Incorrect: {incorrect_len}/{hash_list_len}");
+    for path in incorrect_file {
+        println!("{} {}", path.to_string_lossy(), "wrong".bright_red());
+    }
+    println!("Unreadable lines: {unreadable:?}");
+    if args.time {
+        let time = Instant::now() - before;
+        println!("{:?}", time)
+    }
 }
