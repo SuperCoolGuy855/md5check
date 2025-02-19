@@ -99,7 +99,7 @@ impl App {
     }
 
     fn handle_events(&mut self) -> Result<()> {
-        if event::poll(Duration::from_micros(16667))? {
+        if event::poll(Duration::from_micros(12500))? {
             let event = event::read()?;
             match event {
                 Event::Key(key_event)
