@@ -255,62 +255,9 @@ impl Widget for &App {
         let [left_area, right_area] =
             Layout::horizontal([Constraint::Fill(1), Constraint::Fill(1)]).areas(top_area);
 
-        let status_block = Block::bordered()
-            .title("Status")
-            .padding(Padding::uniform(1));
+        // Right window (Hash status)
+        widgets::Status::new(self.hash_status.clone(), self.running, self.total_hash, self.entered_empty).render(right_area, buf);
 
-        // Hash status window
-        if self.running {
-            let status = { self.hash_status.read().clone() };
-
-            let [stat_area, progress_area] =
-                Layout::vertical([Constraint::Fill(1), Constraint::Length(1)])
-                    .areas(status_block.inner(right_area));
-
-            let colored_hash = if status.file_hash == status.expected_hash {
-                Span::styled(status.file_hash, Style::default().fg(Color::LightGreen))
-            } else {
-                Span::styled(status.file_hash, Style::default().fg(Color::LightRed))
-            };
-
-            let status_line = vec![
-                format!("File name: {}", status.filename).into(),
-                Line::from(vec!["File hash: ".into(), colored_hash]),
-                format!("Expected hash: {}", status.expected_hash).into(),
-                format!("Correct: {}", status.correct_num).into(),
-                format!("Incorrect: {}", status.incorrect_num).into(),
-                format!("Error: {}", status.error_num).into(),
-            ];
-
-            Paragraph::new(status_line).render(stat_area, buf);
-
-            Gauge::default()
-                .use_unicode(true)
-                .ratio((status.correct_num + status.incorrect_num) as f64 / self.total_hash as f64)
-                .render(progress_area, buf);
-        } else {
-            let lines = vec![
-                "Hasher not running".bold().into(),
-                Line::from(vec![
-                    "Press <Enter> ".into(),
-                    if self.entered_empty {
-                        Span::from("after selecting").bold().fg(Color::LightRed)
-                    } else {
-                        "after selecting".into()
-                    },
-                    " a hash list to run".into(),
-                ]),
-            ];
-
-            let vert_centered_area =
-                vert_center(status_block.inner(right_area), lines.len() as u16);
-
-            Paragraph::new(lines)
-                .centered()
-                .render(vert_centered_area, buf);
-        }
-        status_block.render(right_area, buf);
-        
         // Bottom window (Navigator, prompter, log)
         if self.showing_explorer {
             self.file_explorer.widget().render(bottom_area, buf);
