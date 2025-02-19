@@ -36,7 +36,7 @@ impl Default for Setting {
         Self {
             parallel: true,
             sort: false,
-            block_size: 4096,
+            block_size: 8192,
         }
     }
 }
