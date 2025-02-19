@@ -310,43 +310,17 @@ impl Widget for &App {
                 .render(vert_centered_area, buf);
         }
         status_block.render(right_area, buf);
-
-        // Hash list selector window
+        
+        // Bottom window (Navigator, prompter, log)
         if self.showing_explorer {
             self.file_explorer.widget().render(bottom_area, buf);
         } else if self.running {
-            // Log
-            // TODO: Scrolling
-            let log_block = Block::bordered().title("Log");
-
-            let logs = self
-                .messages
-                .iter()
-                .map(|x| match x {
-                    Message::Incorrect(s) => Line::from(vec![
-                        Span::from("Incorrect: ").style(Color::Yellow),
-                        s.into(),
-                    ]),
-                    Message::Error(e) => Line::from(vec![
-                        Span::from("Error: ").style(Color::LightRed),
-                        e.to_string().into(),
-                    ]),
-                    Message::Completed(duration) => {
-                        format!("Completed in {duration:?}! Please close with <Ctrl+c>")
-                            .bold()
-                            .into()
-                    }
-                })
-                .collect_vec();
-
-            Paragraph::new(logs)
-                .block(log_block)
-                .render(bottom_area, buf);
+            widgets::Log::new(&self.messages).render(bottom_area, buf);
         } else {
             widgets::HashListPrompt::new(&self.selected_list, &self.error).render(bottom_area, buf);
         }
 
-        // Setting window
+        // Upper-left window (Setting)
         widgets::Setting::new(&self.settings).render(left_area, buf);
     }
 }
