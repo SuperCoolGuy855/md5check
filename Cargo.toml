@@ -1,13 +1,21 @@
 [package]
 name = "md5hash"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-clap = { version = "4.5.29", features = ["derive"] }
-colored = "3.0.0"
 md-5 = { version = "0.11.0-pre.4" }
 rayon = "1.10.0"
 regex = { version = "1.11.1", features = [] }
+ratatui = "0.29.0"
+crossterm = "0.28.1"
+color-eyre = "0.6.3"
+parking_lot = "0.12.3"
+ratatui-explorer = "0.1.3"
+itertools = "0.14.0"
+size = "0.5.0"
+hex = "0.4.3"
+crossbeam = "0.8.4"
+arboard = "3.4.1"
