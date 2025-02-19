@@ -1,5 +1,10 @@
-use crate::hash::prepare_hashing;
-use crate::{hash::hash_list_parser, Message, Setting, Status};
+pub mod widgets;
+
+use crate::{
+    hash::{hash_list_parser, prepare_hashing},
+    Message, Setting, Status,
+};
+
 use color_eyre::eyre::{eyre, Context, Report, Result};
 use crossbeam::channel;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
@@ -380,47 +385,6 @@ impl Widget for &App {
         }
 
         // Setting window
-        let setting_block = Block::bordered()
-            .title("Settings")
-            .padding(Padding::uniform(1));
-
-        fn boolean_str_color(x: bool) -> Span<'static> {
-            if x {
-                Span::from("true".to_string()).fg(Color::LightGreen)
-            } else {
-                Span::from("false".to_string()).fg(Color::LightRed)
-            }
-        }
-
-        let setting_lines = vec![
-            Line::from(vec![
-                "Parallel: ".into(),
-                boolean_str_color(self.settings.parallel),
-            ]),
-            Line::from(vec!["Sort: ".into(), boolean_str_color(self.settings.sort)]),
-            format!(
-                "Block size: {} ({})",
-                self.settings.block_size,
-                Size::from_bytes(self.settings.block_size)
-            )
-            .into(),
-        ];
-
-        let tooltip_lines = vec![
-            "Press <p> to toggle".into(),
-            "      <s>          ".into(),
-            "Press ← to decrease, → to increase".into(),
-            "Press <Ctrl> for 1 MiB, <Shift> for 1 GiB".into(),
-        ];
-
-        let [setting_area, tooltip_area] =
-            Layout::horizontal([Constraint::Percentage(50), Constraint::Fill(1)])
-                .areas(setting_block.inner(left_area));
-
-        Paragraph::new(setting_lines).render(setting_area, buf);
-
-        Paragraph::new(tooltip_lines).render(tooltip_area, buf);
-
-        setting_block.render(left_area, buf);
+        widgets::Setting::new(&self.settings).render(left_area, buf);
     }
 }
