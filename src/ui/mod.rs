@@ -136,22 +136,30 @@ impl App {
             KeyCode::Char('v') if !self.showing_explorer => {
                 let text = {
                     let mut clipboard = arboard::Clipboard::new()?;
-                    clipboard.get_text()?
+                    match clipboard.get_text() {
+                        Ok(x) => x,
+                        Err(e) => {
+                            self.error = Some(e.into());
+                            String::new()
+                        }
+                    }
                 };
 
                 let path = PathBuf::from(text.trim_matches('"'));
-                if !path.is_absolute() {
-                    self.error = Some(eyre!("Path is not absolute: {path:?}"));
-                } else if !path.is_file() {
-                    self.error = Some(eyre!("Path is not file: {path:?}"));
-                } else {
-                    self.cwd = path
-                        .parent()
-                        .expect("Path is a file and is absolute (checked above) so has a parent")
-                        .to_path_buf();
-                    self.file_explorer.set_cwd(&self.cwd)?;
-                    self.selected_list = path;
-                    self.error = None;
+                if self.error.is_none() {
+                    if !path.is_absolute() {
+                        self.error = Some(eyre!("Path is not absolute: {path:?}"));
+                    } else if !path.is_file() {
+                        self.error = Some(eyre!("Path is not file: {path:?}"));
+                    } else {
+                        self.cwd = path
+                            .parent()
+                            .expect("Path is a file and is absolute (checked above) so has a parent")
+                            .to_path_buf();
+                        self.file_explorer.set_cwd(&self.cwd)?;
+                        self.selected_list = path;
+                        self.error = None;
+                    }
                 }
             }
             KeyCode::Char('c') if self.showing_explorer => {
