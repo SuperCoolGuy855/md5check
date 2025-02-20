@@ -8,21 +8,11 @@ use crate::{
 use color_eyre::eyre::{eyre, Context, Report, Result};
 use crossbeam::channel;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-use itertools::Itertools;
 use parking_lot::RwLock;
 use ratatui::layout::Flex;
 use ratatui::prelude::*;
-use ratatui::widgets::{Gauge, Padding, Wrap};
-use ratatui::{
-    buffer::Buffer,
-    layout::Rect,
-    style::Stylize,
-    text::Line,
-    widgets::{Block, Paragraph, Widget},
-    DefaultTerminal, Frame,
-};
+use ratatui::{buffer::Buffer, layout::Rect, widgets::Widget, DefaultTerminal, Frame};
 use ratatui_explorer::{FileExplorer, Theme};
-use size::Size;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread;
@@ -78,7 +68,10 @@ impl App {
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> Result<()> {
         while !self.exit {
             if self.running {
-                let message_rx = self.message_rx.clone().expect("If self.running, then self.message_rx exists");
+                let message_rx = self
+                    .message_rx
+                    .clone()
+                    .expect("If self.running, then self.message_rx exists");
                 let messages = message_rx.try_iter();
                 self.messages.extend(messages);
             }
@@ -128,33 +121,7 @@ impl App {
         match key_event.code {
             KeyCode::Char('n') if !self.showing_explorer => self.showing_explorer = true,
             KeyCode::Char('v') if !self.showing_explorer => {
-                let text = {
-                    let mut clipboard = arboard::Clipboard::new()?;
-                    match clipboard.get_text() {
-                        Ok(x) => x,
-                        Err(e) => {
-                            self.error = Some(e.into());
-                            String::new()
-                        }
-                    }
-                };
-
-                let path = PathBuf::from(text.trim_matches('"'));
-                if self.error.is_none() {
-                    if !path.is_absolute() {
-                        self.error = Some(eyre!("Path is not absolute: {path:?}"));
-                    } else if !path.is_file() {
-                        self.error = Some(eyre!("Path is not file: {path:?}"));
-                    } else {
-                        self.cwd = path
-                            .parent()
-                            .expect("Path is a file and is absolute (checked above) so has a parent")
-                            .to_path_buf();
-                        self.file_explorer.set_cwd(&self.cwd)?;
-                        self.selected_list = path;
-                        self.error = None;
-                    }
-                }
+                self.get_path_from_clipboard()?;
             }
             KeyCode::Char('c') if self.showing_explorer => {
                 self.showing_explorer = false;
@@ -208,6 +175,36 @@ impl App {
         self.exit = true;
     }
 
+    fn get_path_from_clipboard(&mut self) -> Result<()> {
+        let text = {
+            let mut clipboard = arboard::Clipboard::new()?;
+            match clipboard.get_text() {
+                Ok(x) => x,
+                Err(e) => {
+                    self.error = Some(e.into());
+                    return Ok(());
+                }
+            }
+        };
+
+        let path = PathBuf::from(text.trim_matches('"'));
+        if !path.is_absolute() {
+            self.error = Some(eyre!("Path is not absolute: {path:?}"));
+        } else if !path.is_file() {
+            self.error = Some(eyre!("Path is not file: {path:?}"));
+        } else {
+            self.cwd = path
+                .parent()
+                .expect("Path is a file and is absolute (checked above) so has a parent")
+                .to_path_buf();
+            self.file_explorer.set_cwd(&self.cwd)?;
+            self.selected_list = path;
+            self.error = None;
+        }
+
+        Ok(())
+    }
+
     fn pre_run(&mut self) {
         let res = hash_list_parser(&self.selected_list);
         let hash_list = match res {
@@ -258,7 +255,13 @@ impl Widget for &App {
             Layout::horizontal([Constraint::Fill(1), Constraint::Fill(1)]).areas(top_area);
 
         // Right window (Hash status)
-        widgets::Status::new(self.hash_status.clone(), self.running, self.total_hash, self.entered_empty).render(right_area, buf);
+        widgets::Status::new(
+            self.hash_status.clone(),
+            self.running,
+            self.total_hash,
+            self.entered_empty,
+        )
+        .render(right_area, buf);
 
         // Bottom window (Navigator, prompter, log)
         if self.showing_explorer {
