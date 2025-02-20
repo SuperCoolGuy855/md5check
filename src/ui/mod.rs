@@ -78,15 +78,9 @@ impl App {
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> Result<()> {
         while !self.exit {
             if self.running {
-                if let Ok(mess) = self
-                    .message_rx
-                    .clone()
-                    .expect("If self.running, then self.message_rx exists")
-                    .try_recv()
-                {
-                    // TODO: Check if need to reset program
-                    self.messages.push(mess);
-                }
+                let message_rx = self.message_rx.clone().expect("If self.running, then self.message_rx exists");
+                let messages = message_rx.try_iter();
+                self.messages.extend(messages);
             }
             terminal.draw(|frame| self.draw(frame))?;
             self.handle_events().wrap_err("handle events failed")?;
