@@ -52,7 +52,7 @@ impl Status {
 
         Gauge::default()
             .use_unicode(true)
-            .ratio((status.correct_num + status.incorrect_num) as f64 / self.total_hash as f64)
+            .ratio((status.correct_num + status.incorrect_num + status.error_num) as f64 / self.total_hash as f64)
             .render(progress_area, buf);
     }
 
