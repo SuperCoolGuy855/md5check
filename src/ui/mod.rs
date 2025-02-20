@@ -120,14 +120,8 @@ impl App {
 
         match key_event.code {
             KeyCode::Char('n') if !self.showing_explorer => self.showing_explorer = true,
-            KeyCode::Char('v') if !self.showing_explorer => {
-                self.get_path_from_clipboard()?;
-            }
-            KeyCode::Char('c') if self.showing_explorer => {
-                self.showing_explorer = false;
-                self.file_explorer.set_cwd(&self.cwd)?;
-                self.file_explorer.set_selected_idx(self.selected_idx);
-            }
+            KeyCode::Char('v') if !self.showing_explorer => self.get_path_from_clipboard()?,
+            KeyCode::Char('c') if self.showing_explorer => self.cancel_selection()?,
             KeyCode::Char('p') if !self.showing_explorer => {
                 self.settings.parallel = !self.settings.parallel;
             }
@@ -173,6 +167,14 @@ impl App {
 
     fn exit(&mut self) {
         self.exit = true;
+    }
+
+    fn cancel_selection(&mut self) -> Result<()> {
+        self.showing_explorer = false;
+        self.file_explorer.set_cwd(&self.cwd)?;
+        self.file_explorer.set_selected_idx(self.selected_idx);
+
+        Ok(())
     }
 
     fn get_path_from_clipboard(&mut self) -> Result<()> {
