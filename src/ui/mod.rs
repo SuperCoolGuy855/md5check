@@ -103,7 +103,7 @@ impl App {
             }?;
 
             if self.showing_explorer {
-                self.file_explorer.handle(&event)?;
+                self.file_explorer.handle(&event)?
             }
         }
 
@@ -111,55 +111,35 @@ impl App {
     }
 
     fn handle_key_event(&mut self, key_event: KeyEvent) -> Result<()> {
-        let block_size_adjustment = 1024
-            * match key_event.modifiers {
-                KeyModifiers::CONTROL => 1024,
-                KeyModifiers::SHIFT => 1024 * 1024,
-                _ => 1,
-            };
+        if self.showing_explorer {
+            match key_event.code {
+                KeyCode::Char('c') => self.cancel_selection()?,
+                KeyCode::Enter => self.selecting_file()?,
+                _ => (),
+            }
+        } else {
+            let block_size_step = 1024
+                * match key_event.modifiers {
+                    KeyModifiers::CONTROL => 1024,
+                    KeyModifiers::SHIFT => 1024 * 1024,
+                    _ => 1,
+                };
 
-        match key_event.code {
-            KeyCode::Char('n') if !self.showing_explorer => self.showing_explorer = true,
-            KeyCode::Char('v') if !self.showing_explorer => self.get_path_from_clipboard()?,
-            KeyCode::Char('c') if self.showing_explorer => self.cancel_selection()?,
-            KeyCode::Char('p') if !self.showing_explorer => {
-                self.settings.parallel = !self.settings.parallel;
-            }
-            KeyCode::Char('s') if !self.showing_explorer => {
-                self.settings.sort = !self.settings.sort;
-            }
-            KeyCode::Left if !self.showing_explorer => {
-                self.settings.block_size = self
-                    .settings
-                    .block_size
-                    .saturating_sub(block_size_adjustment);
-                if self.settings.block_size < 1024 {
-                    self.settings.block_size = 1024;
+            match key_event.code {
+                KeyCode::Char('n') => self.showing_explorer = true,
+                KeyCode::Char('v') => self.get_path_from_clipboard()?,
+                KeyCode::Char('p') => self.settings.parallel = !self.settings.parallel,
+                KeyCode::Char('s') => self.settings.sort = !self.settings.sort,
+                KeyCode::Left => self.decrease_block_size(block_size_step),
+                KeyCode::Right => self.increase_block_size(block_size_step),
+                KeyCode::Enter if !self.selected_list.to_string_lossy().is_empty() => {
+                    self.pre_run()
                 }
-            }
-            KeyCode::Right if !self.showing_explorer => {
-                self.settings.block_size = self
-                    .settings
-                    .block_size
-                    .saturating_add(block_size_adjustment);
-            }
-            KeyCode::Enter if self.showing_explorer => {
-                let current = self.file_explorer.current();
-                if !current.is_dir() {
-                    self.showing_explorer = false;
-                    self.cwd = self.file_explorer.cwd().clone();
-                    self.selected_list = current.path().clone();
-                    self.selected_idx = self.file_explorer.selected_idx();
-                    self.error = None;
+                KeyCode::Enter if self.selected_list.to_string_lossy().is_empty() => {
+                    self.entered_empty = true
                 }
+                _ => (),
             }
-            KeyCode::Enter if self.selected_list.to_string_lossy().is_empty() => {
-                self.entered_empty = true
-            }
-            KeyCode::Enter if !self.selected_list.to_string_lossy().is_empty() => {
-                self.pre_run();
-            }
-            _ => (),
         }
 
         Ok(())
@@ -167,6 +147,30 @@ impl App {
 
     fn exit(&mut self) {
         self.exit = true;
+    }
+
+    fn increase_block_size(&mut self, step: usize) {
+        self.settings.block_size = self.settings.block_size.saturating_add(step);
+    }
+
+    fn decrease_block_size(&mut self, step: usize) {
+        self.settings.block_size = self.settings.block_size.saturating_sub(step);
+        if self.settings.block_size < 1024 {
+            self.settings.block_size = 1024;
+        }
+    }
+
+    fn selecting_file(&mut self) -> Result<()> {
+        let current = self.file_explorer.current();
+        if !current.is_dir() {
+            self.showing_explorer = false;
+            self.cwd = self.file_explorer.cwd().clone();
+            self.selected_list = current.path().clone();
+            self.selected_idx = self.file_explorer.selected_idx();
+            self.error = None;
+        }
+
+        Ok(())
     }
 
     fn cancel_selection(&mut self) -> Result<()> {
