@@ -193,12 +193,14 @@ impl App {
         } else if !path.is_file() {
             self.error = Some(eyre!("Path is not file: {path:?}"));
         } else {
+            // TODO: Get the correct index (if possible)
             self.cwd = path
                 .parent()
                 .expect("Path is a file and is absolute (checked above) so has a parent")
                 .to_path_buf();
             self.file_explorer.set_cwd(&self.cwd)?;
             self.selected_list = path;
+            self.selected_idx = 0;
             self.error = None;
         }
 
