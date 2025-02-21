@@ -2,20 +2,28 @@ use crate::Message;
 use itertools::Itertools;
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Padding, Paragraph};
+use std::cmp::min;
 
 pub struct Log<'a> {
     messages: &'a [Message],
+    scroll_offset: u16,
 }
 
 impl<'a> Log<'a> {
-    pub fn new(messages: &'a [Message]) -> Self {
-        Self { messages }
+    pub fn new<T>(messages: &'a [Message], scroll_offset: T) -> Self
+    where
+        T: Into<u16>,
+    {
+        Self {
+            messages,
+            scroll_offset: scroll_offset.into(),
+        }
     }
 }
 
 impl Widget for Log<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        // TODO: Scrolling
+        // TODO: Fix scroll, don't allow to scroll down to the void
         let log_block = Block::bordered().padding(Padding::uniform(1)).title("Log");
 
         let logs = self
@@ -36,9 +44,16 @@ impl Widget for Log<'_> {
                         .bold()
                         .into()
                 }
+                Message::Empty => "".into(),
             })
             .collect_vec();
 
-        Paragraph::new(logs).block(log_block).render(area, buf);
+        let maximum_offset = (logs.len() as u16).saturating_sub(log_block.inner(area).height);
+        let scroll_offset = min(self.scroll_offset, maximum_offset);
+
+        Paragraph::new(logs)
+            .scroll((scroll_offset, 0))
+            .block(log_block)
+            .render(area, buf);
     }
 }

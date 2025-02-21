@@ -5,7 +5,6 @@ use std::time::Duration;
 use crate::ui::App;
 use color_eyre::{Report, Result};
 
-// TODO: Add error messages
 #[derive(Debug, Default, Clone)]
 struct Status {
     filename: String,
@@ -21,6 +20,7 @@ enum Message {
     Incorrect(String),
     Error(Report),
     Completed(Duration),
+    Empty
 }
 
 // TODO: Add core_num setting

@@ -28,6 +28,7 @@ pub struct App {
     selected_idx: usize,
     showing_explorer: bool,
     running: bool,
+    log_scroll_offset: u16,
     message_rx: Option<channel::Receiver<Message>>,
     messages: Vec<Message>,
     entered_empty: bool,
@@ -53,10 +54,11 @@ impl Default for App {
             selected_list: PathBuf::new(),
             showing_explorer: false,
             selected_idx: 0,
+            log_scroll_offset: 0,
             running: false,
             entered_empty: false,
             message_rx: None,
-            messages: vec![],
+            messages: vec![Message::Empty],
             error: None,
             exit: false,
         }
@@ -95,7 +97,7 @@ impl App {
                     self.exit();
                     Ok(())
                 }
-                Event::Key(key_event) if key_event.kind == KeyEventKind::Press && !self.running => {
+                Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
                     self.handle_key_event(key_event)
                         .wrap_err_with(|| format!("handling key event failed:\n{key_event:#?}"))
                 }
@@ -115,6 +117,16 @@ impl App {
             match key_event.code {
                 KeyCode::Char('c') => self.cancel_selection()?,
                 KeyCode::Enter => self.selecting_file()?,
+                _ => (),
+            }
+        } else if self.running {
+            match key_event.code {
+                KeyCode::Up => {
+                    self.log_scroll_up();
+                }
+                KeyCode::Down => {
+                    self.log_scroll_down();
+                }
                 _ => (),
             }
         } else {
@@ -147,6 +159,14 @@ impl App {
 
     fn exit(&mut self) {
         self.exit = true;
+    }
+
+    fn log_scroll_up(&mut self) {
+        self.log_scroll_offset = self.log_scroll_offset.saturating_sub(1);
+    }
+
+    fn log_scroll_down(&mut self) {
+        self.log_scroll_offset = self.log_scroll_offset.saturating_add(1);
     }
 
     fn increase_block_size(&mut self, step: usize) {
@@ -275,7 +295,7 @@ impl Widget for &App {
         if self.showing_explorer {
             self.file_explorer.widget().render(bottom_area, buf);
         } else if self.running {
-            widgets::Log::new(&self.messages).render(bottom_area, buf);
+            widgets::Log::new(&self.messages, self.log_scroll_offset).render(bottom_area, buf);
         } else {
             widgets::HashListPrompt::new(&self.selected_list, &self.error).render(bottom_area, buf);
         }

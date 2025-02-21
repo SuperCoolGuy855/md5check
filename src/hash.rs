@@ -61,7 +61,6 @@ fn hashing_file(hash_pair: &HashPair, block_size: usize) -> Result<String> {
     Ok(hex::encode(hasher.finalize()))
 }
 
-// TODO: Report error and incorrect
 fn hash_checker(hash_pair: &HashPair, setting: &Setting, status: Arc<RwLock<Status>>, tx: Sender<Message>) {
     let res = hashing_file(hash_pair, setting.block_size);
     let file_hash = match res {
