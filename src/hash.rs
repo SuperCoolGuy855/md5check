@@ -1,17 +1,16 @@
 use crate::{Message, Setting, Status};
 use color_eyre::eyre::eyre;
 use color_eyre::Result;
-use itertools::Itertools;
+use crossbeam::channel::Sender;
 use md5::{Digest, Md5};
 use parking_lot::RwLock;
+use rayon::prelude::*;
 use regex::Regex;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
-use crossbeam::channel::Sender;
-use rayon::prelude::*;
 
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub struct HashPair {
@@ -30,9 +29,12 @@ pub fn hash_list_parser(file_path: &Path) -> Result<Vec<HashPair>> {
                 return None;
             }
 
-            let (hash, file) = s.split(" *").collect_tuple()?;
+            let (hash, file) = s.split_once(" ")?;
             Some(HashPair {
-                file_path: file.to_string(),
+                file_path: file
+                    .strip_prefix(['*', ' '])
+                    .expect("file should always be prefixed")
+                    .to_string(),
                 expected_hash: hash.to_string(),
             })
         })
@@ -61,7 +63,12 @@ fn hashing_file(hash_pair: &HashPair, block_size: usize) -> Result<String> {
     Ok(hex::encode(hasher.finalize()))
 }
 
-fn hash_checker(hash_pair: &HashPair, setting: &Setting, status: Arc<RwLock<Status>>, tx: Sender<Message>) {
+fn hash_checker(
+    hash_pair: &HashPair,
+    setting: &Setting,
+    status: Arc<RwLock<Status>>,
+    tx: Sender<Message>,
+) {
     let res = hashing_file(hash_pair, setting.block_size);
     let file_hash = match res {
         Ok(x) => x,
@@ -91,7 +98,12 @@ fn hash_checker(hash_pair: &HashPair, setting: &Setting, status: Arc<RwLock<Stat
     }
 }
 
-pub fn prepare_hashing(mut hash_list: Vec<HashPair>, setting: &Setting, status: Arc<RwLock<Status>>, tx: Sender<Message>) {
+pub fn prepare_hashing(
+    mut hash_list: Vec<HashPair>,
+    setting: &Setting,
+    status: Arc<RwLock<Status>>,
+    tx: Sender<Message>,
+) {
     let start_time = Instant::now();
     if setting.sort {
         hash_list.sort();
@@ -100,7 +112,7 @@ pub fn prepare_hashing(mut hash_list: Vec<HashPair>, setting: &Setting, status: 
     if setting.parallel {
         hash_list.into_par_iter().for_each(|x| {
             let tx_clone = tx.clone();
-           hash_checker(&x, setting, Arc::clone(&status), tx_clone)
+            hash_checker(&x, setting, Arc::clone(&status), tx_clone)
         });
     } else {
         hash_list.into_iter().for_each(|x| {
