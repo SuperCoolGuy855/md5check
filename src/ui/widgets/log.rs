@@ -2,7 +2,6 @@ use crate::Message;
 use itertools::Itertools;
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Padding, Paragraph};
-use std::cmp::min;
 
 pub struct Log<'a> {
     messages: &'a [Message],
@@ -48,11 +47,8 @@ impl Widget for Log<'_> {
             })
             .collect_vec();
 
-        let maximum_offset = (logs.len() as u16).saturating_sub(log_block.inner(area).height);
-        let scroll_offset = min(self.scroll_offset, maximum_offset);
-
         Paragraph::new(logs)
-            .scroll((scroll_offset, 0))
+            .scroll((self.scroll_offset, 0))
             .block(log_block)
             .render(area, buf);
     }

@@ -4,6 +4,7 @@ use crate::{
     hash::{hash_list_parser, prepare_hashing},
     Message, Setting, Status,
 };
+use std::cmp::min;
 
 use color_eyre::eyre::{eyre, Context, Report, Result};
 use crossbeam::channel;
@@ -166,7 +167,7 @@ impl App {
     }
 
     fn log_scroll_down(&mut self) {
-        self.log_scroll_offset = self.log_scroll_offset.saturating_add(1);
+        self.log_scroll_offset = min(self.log_scroll_offset.saturating_add(1), self.messages.len() as u16 - 2);
     }
 
     fn increase_block_size(&mut self, step: usize) {
