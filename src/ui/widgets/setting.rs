@@ -15,9 +15,7 @@ pub struct Setting<'a> {
 
 impl<'a> Setting<'a> {
     pub fn new(settings: &'a SettingStorage) -> Self {
-        Self {
-            settings,
-        }
+        Self { settings }
     }
 }
 
@@ -44,13 +42,21 @@ impl Widget for Setting<'_> {
         let tooltip_lines = vec![
             "Press <p> to toggle".into(),
             "      <s>          ".into(),
-            "Press ← to decrease, → to increase".into(),
-            "Press <Ctrl> for 1 MiB, <Shift> for 1 GiB".into(),
+            "Press <←/→> to decrease/increase".into(),
+            "Press <Ctrl/Shift> for 1 MiB/GiB".into(),
         ];
 
-        let [setting_area, tooltip_area] =
-            Layout::horizontal([Constraint::Percentage(50), Constraint::Fill(1)])
-                .areas(setting_block.inner(area));
+        let setting_max_len = setting_lines
+            .iter()
+            .map(|x| x.width())
+            .max()
+            .expect("setting_lines is at least len 3 as set in code. so will have a max");
+
+        let [setting_area, tooltip_area] = Layout::horizontal([
+            Constraint::Length(setting_max_len as u16 + 2),
+            Constraint::Fill(1),
+        ])
+        .areas(setting_block.inner(area));
 
         Paragraph::new(setting_lines).render(setting_area, buf);
 
