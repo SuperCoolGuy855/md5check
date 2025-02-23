@@ -19,6 +19,8 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
+// TODO: Get time estimate
+
 pub struct App {
     hash_status: Arc<RwLock<Status>>,
     total_hash: usize,
@@ -67,7 +69,6 @@ impl Default for App {
 }
 
 impl App {
-    /// runs the application's main loop until the user quits
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> Result<()> {
         while !self.exit {
             if self.running {

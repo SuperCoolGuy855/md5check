@@ -22,8 +22,11 @@ impl<'a> Log<'a> {
 
 impl Widget for Log<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        // TODO: Fix scroll, don't allow to scroll down to the void
-        let log_block = Block::bordered().padding(Padding::uniform(1)).title("Log");
+        // TODO: Add scroll instructions
+        let log_block = Block::bordered()
+            .padding(Padding::uniform(1))
+            .title("Log")
+            .title_bottom("Press <↑/↓> to scroll through logs");
 
         let logs = self
             .messages
