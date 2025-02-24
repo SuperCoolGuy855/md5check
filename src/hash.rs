@@ -2,6 +2,7 @@ use crate::{Message, Setting, Status};
 use color_eyre::eyre::eyre;
 use color_eyre::Result;
 use crossbeam::channel::Sender;
+use indicatif::ProgressBar;
 use md5::{Digest, Md5};
 use parking_lot::RwLock;
 use rayon::prelude::*;
@@ -16,6 +17,62 @@ use std::time::Instant;
 pub struct HashPair {
     file_path: String,
     expected_hash: String,
+}
+
+#[derive(Debug, Clone)]
+pub enum StatusWrapper {
+    Status(Arc<RwLock<Status>>),
+    ProgressBar(ProgressBar),
+}
+
+impl StatusWrapper {
+    fn set_text(&self, filename: String, file_hash: String, expected_hash: String) {
+        match self {
+            StatusWrapper::Status(status) => {
+                let mut status = status.write();
+                status.filename = filename;
+                status.file_hash = file_hash;
+                status.expected_hash = expected_hash;
+            }
+            StatusWrapper::ProgressBar(_) => {}
+        }
+    }
+
+    fn inc_correct(&self) {
+        match self {
+            StatusWrapper::Status(status) => {
+                let mut status = status.write();
+                status.correct_num += 1;
+            }
+            StatusWrapper::ProgressBar(progress) => {
+                progress.inc(1);
+            }
+        }
+    }
+
+    fn inc_incorrect(&self) {
+        match self {
+            StatusWrapper::Status(status) => {
+                let mut status = status.write();
+                status.incorrect_num += 1;
+            }
+            StatusWrapper::ProgressBar(progress) => {
+                progress.inc(1);
+            }
+        }
+    }
+
+    fn inc_error(&self) {
+        match self {
+            StatusWrapper::Status(status) => {
+                let mut status = status.write();
+                status.error_num += 1;
+            }
+            StatusWrapper::ProgressBar(progress) => {
+                progress.inc(1);
+            }
+        }
+    }
 }
 
 pub fn hash_list_parser(file_path: &Path) -> Result<Vec<HashPair>> {
@@ -64,44 +121,35 @@ fn hashing_file(hash_pair: &HashPair, block_size: usize) -> Result<String> {
 }
 
 fn hash_checker(
-    hash_pair: &HashPair,
+    hash_pair: HashPair,
     setting: &Setting,
-    status: Arc<RwLock<Status>>,
+    status: StatusWrapper,
     tx: Sender<Message>,
 ) {
-    let res = hashing_file(hash_pair, setting.block_size);
+    let res = hashing_file(&hash_pair, setting.block_size);
     let file_hash = match res {
         Ok(x) => x,
         Err(e) => {
             let _ = tx.send(Message::Error(e));
-            let mut status = status.write();
-            status.error_num += 1;
+            status.inc_error();
             return;
         }
     };
 
-    let mut is_incorrect = false;
-    {
-        let mut status = status.write();
-        if hash_pair.expected_hash != file_hash {
-            status.incorrect_num += 1;
-            is_incorrect = true;
-        } else {
-            status.correct_num += 1;
-        }
-        status.expected_hash = hash_pair.expected_hash.clone();
-        status.file_hash = file_hash;
-        status.filename = hash_pair.file_path.clone();
-    }
-    if is_incorrect {
+    if hash_pair.expected_hash != file_hash {
         let _ = tx.send(Message::Incorrect(hash_pair.file_path.clone()));
+        status.inc_incorrect();
+    } else {
+        status.inc_correct();
     }
+
+    status.set_text(hash_pair.file_path, file_hash, hash_pair.expected_hash);
 }
 
 pub fn prepare_hashing(
     mut hash_list: Vec<HashPair>,
     setting: &Setting,
-    status: Arc<RwLock<Status>>,
+    status: StatusWrapper,
     tx: Sender<Message>,
 ) {
     let start_time = Instant::now();
@@ -112,12 +160,12 @@ pub fn prepare_hashing(
     if setting.parallel {
         hash_list.into_par_iter().for_each(|x| {
             let tx_clone = tx.clone();
-            hash_checker(&x, setting, Arc::clone(&status), tx_clone)
+            hash_checker(x, setting, status.clone(), tx_clone)
         });
     } else {
         hash_list.into_iter().for_each(|x| {
             let tx_clone = tx.clone();
-            hash_checker(&x, setting, Arc::clone(&status), tx_clone)
+            hash_checker(x, setting, status.clone(), tx_clone)
         });
     }
 

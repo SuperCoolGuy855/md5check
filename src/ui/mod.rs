@@ -18,7 +18,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
-
+use crate::hash::StatusWrapper;
 // TODO: Get time estimate
 
 pub struct App {
@@ -257,7 +257,7 @@ impl App {
         let (tx, rx) = channel::unbounded();
         self.message_rx = Some(rx);
 
-        thread::spawn(move || prepare_hashing(hash_list, &settings, status_clone, tx));
+        thread::spawn(move || prepare_hashing(hash_list, &settings, StatusWrapper::Status(status_clone), tx));
     }
 }
 

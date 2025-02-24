@@ -19,3 +19,5 @@ size = "0.5.0"
 hex = "0.4.3"
 crossbeam = "0.8.4"
 arboard = "3.4.1"
+indicatif = "0.17.11"
+clap = { version = "4.5.30", features = ["unicode", "derive"] }
